@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    
+    <color name="white">#FFFFFF</color>
+    <color name="medium_champagne">#F3E5AB</color>
+      
+    
+    <color name="sunglow">#FFCC33</color>
+    <color name="tangerine">#F28500</color>
+    <color name="willpower_orange">#FD5800</color>
+    
+    
+    <color name="stormcloud">#4F666A</color>
+    <color name="trolley_grey">#808080</color>
+    
+    
+    <color name="spring_green">#00FF7F</color>
+    
+    
+    <color name="university_red">#CC0000</color>
+    
+    <color name="black">#000000</color>
+    
+</resources>
