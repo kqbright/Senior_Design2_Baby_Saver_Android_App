@@ -1,0 +1,528 @@
+package com.babycartest;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.ArrayList;
+import java.util.Set;
+import java.util.UUID;
+
+import android.app.Activity;
+import android.app.AlertDialog;
+import android.app.NotificationManager;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothSocket;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.media.AudioManager;
+import android.net.Uri;
+import android.os.Bundle;
+import android.os.Handler;
+import android.support.v4.app.NotificationCompat;
+import android.view.View;
+import android.widget.ArrayAdapter;
+import android.widget.Button;
+import android.widget.ImageView;
+import android.widget.TextView;
+import android.widget.Toast;
+
+public class MainActivity extends Activity {
+	
+	//Define all constants and variables used in the activity	
+    private static final int REQUEST_ENABLE_BT = 12;	
+  
+    private Button enableBT; 
+    private Button showList, mute_button;
+    
+    TextView tempLabel;
+    TextView baby_status;
+    ImageView circleConnected, circleBaby, circleClip;
+    
+    String test;
+    public static String bluetoothDevice;
+    public int numberOfPairedDevices;
+    
+    public static OutputStream outputStream;   
+    public static InputStream inputStream;
+    
+    byte delimiter = 10;
+    Handler handler = new Handler();
+    byte[] readBuffer;
+	int readBufferPosition;
+	int counter;
+	int bits;
+	Thread workerThread;
+	//int intData = 0;
+   	int tempD = 0;
+	String val = "";
+	int check = 0;
+	int tempDisplay = 0;
+	int baby = 0;
+	int clip = 0;
+	volatile boolean stopWorker;  
+	int blue = 0;
+	int dcValue = 0;
+	int kevin = 0;
+	int theCounter = 10;
+	
+	
+	boolean checker;
+	String checker2 = "";
+	String tempString;
+	BluetoothDevice device; 
+	
+    ArrayList <String> list = new ArrayList <String>();
+    ArrayList <String> MAC = new ArrayList <String>();
+      
+    //Create Bluetooth adapter to access bluetooth functions
+    BluetoothAdapter mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+    public static final UUID MY_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
+	public static BluetoothSocket btSocket = null;
+    public static int intData = 0;
+    String str = "0";
+    
+    //Create Notification manager to send notifications
+    private NotificationManager mNotificationManager; 
+    private int notificationID1 = 111; 
+    private int notificationID2 = 112;
+    
+    //private int numMessages = 0;
+
+    //========= onCREATE ===========
+    
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        
+        //Initialize array adpaters for bluetooth name and MAC address
+        final ArrayAdapter<String> adapter = new ArrayAdapter<String>(this,
+  	          android.R.layout.simple_list_item_1, android.R.id.text1, list);
+        final ArrayAdapter<String> adapter_MAC = new ArrayAdapter<String>(this,
+        		android.R.layout.simple_list_item_1,android.R.id.text1, MAC);
+        
+        //Initialze buttons, layouts, text views, and image views in the layout
+        tempLabel = (TextView)findViewById(R.id.tempValue);
+        enableBT = (Button)findViewById(R.id.button1);
+        showList = (Button)findViewById(R.id.button2);
+        mute_button = (Button)findViewById(R.id.button4);
+              
+        circleConnected = (ImageView)findViewById(R.id.circle1);
+        circleBaby= (ImageView)findViewById(R.id.circle2);
+        circleClip = (ImageView)findViewById(R.id.circle3);
+        baby_status = (TextView)findViewById(R.id.baby_status);
+        
+        //Create an intent filter to check if Bluetooth has lost connection
+		final IntentFilter filter = new IntentFilter();  
+		filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+		filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED);
+		
+		//Disable mute button until alarm sounds
+		mute_button.setEnabled(false);
+		
+        //Set "Enable Bluetooth Button" Action
+		//Enable bluetooth when this button is clicked. 
+		//If bluetooth is enabled, display a toast notifying the user
+        enableBT.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+            	if (!mBluetoothAdapter.isEnabled()) {
+            		Intent enableBtIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+            		startActivityForResult(enableBtIntent, REQUEST_ENABLE_BT);            		           	
+            	}
+            	else{
+            		Context context = getApplicationContext();
+                    CharSequence text = "Bluetooth Already Enabled";
+
+                    Toast toast = Toast.makeText(context, text, Toast.LENGTH_SHORT);
+                    
+            		toast.show();}
+            	
+            	}
+            
+            
+        });
+        
+        //Mute button
+        //Turn off all sounds when the mute button is pressed
+        mute_button.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View v) {
+            	
+            	turnOffSounds();
+            	
+            }	
+            	
+        });
+        
+        //Show list Button
+        //When pressed, show a list of paired device. When the user clicks on a paired device, 
+        //attempt to connect to the device that was clicked. 
+        showList.setOnClickListener(new View.OnClickListener() {
+
+			public void onClick(View v) {
+				//Obtain list of paired devices
+				pairedDevices();
+						
+				AlertDialog.Builder alertDialog = new AlertDialog.Builder(MainActivity.this);
+		        alertDialog.setTitle("Select Device");
+		        alertDialog.setSingleChoiceItems(adapter, -1, new DialogInterface.OnClickListener(){
+		        	public void onClick(DialogInterface dialog, int which){
+		        		MainActivity.bluetoothDevice = adapter_MAC.getItem(which);	        				        			        		
+		        		dialog.cancel();
+		        		Connect(MainActivity.bluetoothDevice);	        		
+		        	}
+		        });	           
+		        alertDialog.show();	        
+			}
+		});
+         
+        //Use handler to constantly check for updated values
+        handler.post(new Runnable(){
+        	//update values here
+            @Override
+            public void run(){
+
+            	//updates the values on main activity
+            	            	
+            	    tempString = str.replaceAll("[^a-fA-F0-9]","");
+            		if(!tempString.equals("")){
+            		   valueUpdater(tempString);
+            		}
+
+            		if(dcValue == 1){
+            			
+            			//Connect(MainActivity.bluetoothDevice);
+            			
+            			
+            		}
+            		handler.postDelayed(this, 250);
+            		            		
+            		registerReceiver(mReceiver, filter);
+            	
+            }
+        });
+          
+        
+    }
+    
+//Place paired devices into an array using BluetoothAdapter
+public void pairedDevices() {
+       
+        Set<BluetoothDevice> devices = mBluetoothAdapter.getBondedDevices();
+        list.clear();
+        MAC.clear();
+        for (BluetoothDevice device : devices) {
+        	list.add(device.getName()+"\n"+device.getAddress());  
+        	MAC.add(device.getAddress());
+        	 }
+    }
+ 
+//Connect to the specified bluetooth device. This function is called when an item
+//is selected in the dialog that pops up when the user presses "Show List"
+public void Connect(String MAC){
+	
+    	BluetoothAdapter mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
+		device = mBluetoothAdapter.getRemoteDevice(MAC);
+		//Toast.makeText(getApplicationContext(), "Connecting...", Toast.LENGTH_LONG).show();
+		mBluetoothAdapter.cancelDiscovery();
+		try {
+            btSocket = device.createRfcommSocketToServiceRecord(MY_UUID);
+// Here is the part the connection is made, by asking the device to create a
+// RfcommSocket                   
+			btSocket.connect();
+			Toast.makeText(getApplicationContext(), "Connected", Toast.LENGTH_SHORT).show();
+			//Update GUI
+			circleConnected.setBackgroundResource(R.drawable.green_circle);
+			displayNotification1();
+			cancelNotification(notificationID2);
+			
+			
+		} catch (IOException e) {
+			try {
+				btSocket.close();
+			} catch (IOException e2) {
+				Toast.makeText(getApplicationContext(), "Unable to end the connection", Toast.LENGTH_LONG).show();
+			}
+			Toast.makeText(getApplicationContext(), "Socket creation failed", Toast.LENGTH_LONG).show();
+		}
+		
+		try {
+			//Check if Bluetooth Socket is connected. If not, do not try to create input/output streams
+			if(btSocket.isConnected()){
+				//Create input/output streams for talking to bluetooth
+				outputStream = btSocket.getOutputStream();
+				inputStream = btSocket.getInputStream();
+				dcValue = 0;
+				//Begin to listen for new data
+				beginListenForData();
+				}		
+
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+               
+	}
+    
+    //Begin to listen for data. This function will constantly poll the arduino for value changes
+	//such as if the baby is in the car, if the clip is connected, and what the temperature is.
+	//This will be called in the connect method
+    void beginListenForData()
+    {
+    	str = "0";
+        final Handler handler = new Handler(); 
+        final byte delimiter = 10; //This is the ASCII code for a newline character
+
+        stopWorker = false;
+        readBufferPosition = 0;
+        readBuffer = new byte[1024];
+        workerThread = new Thread(new Runnable()
+        {
+            public void run()
+            {                
+               while(!Thread.currentThread().isInterrupted() && !stopWorker)
+               {
+                    try 
+                    {
+                        int bytesAvailable = inputStream.available();                        
+                        if(bytesAvailable > 0)
+                        {
+                            byte[] packetBytes = new byte[bytesAvailable];
+                            inputStream.read(packetBytes);
+                            for(int i=0;i<bytesAvailable;i++)
+                            {
+                                byte b = packetBytes[i];
+                                if(b == delimiter)
+                                {
+                                	byte[] encodedBytes = new byte[readBufferPosition];
+                                	System.arraycopy(readBuffer, 0, encodedBytes, 0, encodedBytes.length);
+                                	final String data = new String(encodedBytes, "US-ASCII");
+                                  	
+                                	readBufferPosition = 0;
+
+                                    handler.post(new Runnable()
+                                    {
+                                        public void run()
+                                        {
+                                        	
+                                        	//intData = data1;
+                                        	//tempLabel.setText(data);
+                                        	str = data.replaceAll("\\s+", "");
+                                        	                                   	
+                                        }
+                                    });
+                                }
+                                else
+                                {
+                                    readBuffer[readBufferPosition++] = b;
+                                }
+                            }
+                        }
+                    } 
+                    catch (IOException ex) 
+                    {
+                        stopWorker = true;
+                    }
+               }
+            }
+        });
+
+        workerThread.start();
+    }
+    
+//Function - This function takes the data that the arduino sends and decodes the encoded signal
+//We extract our baby data, clip data, and temperature through the value we receive from the arduino
+//This function updates the components in our GUI
+public void valueUpdater(String stringData){
+	
+	//int tempD = 0;
+	int intData = 0;
+	int tempF = 0;
+	int tempB = 0;
+	int tempC = 0;
+	int tempFinalCheck = 0;
+
+	
+	intData = Integer.parseInt(stringData,16);
+	if(intData <= 0x3FF){
+	
+	tempF = intData & 0xFF;
+	tempF -= 13;
+	tempB = intData & 0x100;
+	tempC = intData & 0x200;
+	
+	
+	if(theCounter > 50){
+	//Temperature Datv a Here
+	val = "" + tempF + "°";
+	tempLabel.setText(val);//UPDATE DAT TEMP
+	val = "";
+	theCounter = 0;
+	}//end of 200 loop
+	else{
+			theCounter++;
+	}
+	//Clip Data Here
+	if(tempC > 0){
+		
+		//Change clip circle to green
+		circleClip.setBackgroundResource(R.drawable.green_circle);
+	}
+	
+	else{
+		circleClip.setBackgroundResource(R.drawable.red_circle);
+	}
+	
+	//Baby Data Here
+	if(tempB > 0){
+		
+		circleBaby.setBackgroundResource(R.drawable.green_circle);
+		//Change baby circle to green
+	}
+	else {
+		circleBaby.setBackgroundResource(R.drawable.red_circle);
+		//Change baby circle to red
+	}
+	
+	if(tempB > 0 && tempC > 0){
+		
+		baby = 1;
+		baby_status.setText("Child in the Car");
+		baby_status.setTextColor(getResources().getColor(R.color.university_red));		
+		
+	}
+	else{
+		
+		baby = 0;
+		baby_status.setText("No Child Detected");	
+		baby_status.setTextColor(getResources().getColor(R.color.forest_green));
+		
+	}
+	}//end of 0x3FF if statement
+	
+	
+}
+    
+//Function - Checks if the bluetooth device has been disconnected. If so, set the alarm and states.
+final BroadcastReceiver mReceiver = new BroadcastReceiver() {
+    @Override
+    public void onReceive(Context context, Intent intent) {
+        String action = intent.getAction();
+
+        if (BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED.equals(action)) {
+            //disconnect request
+        } else if (BluetoothDevice.ACTION_ACL_DISCONNECTED.equals(action)) {
+        	Toast.makeText(getApplicationContext(), "Connection Lost", Toast.LENGTH_LONG).show();
+        	circleConnected.setBackgroundResource(R.drawable.red_circle);
+        	cancelNotification(notificationID1);
+        	str = "0";
+        	dcValue = 1;
+        	//If baby was in the car, ALARM
+        	//Turn on sounds, display notifications, enable mute button
+        	if(baby == 1){
+        		turnOnSounds();
+        		displayNotification2();        		
+        		mute_button.setEnabled(true);
+        	}
+        	
+        }
+    }
+};
+
+//Function that turns on all sounds and volumes for notifications
+public void turnOnSounds(){
+    AudioManager amanager; 
+    amanager = (AudioManager)getSystemService(AUDIO_SERVICE);
+	//turn ringer silent
+    amanager.setRingerMode(AudioManager.RINGER_MODE_NORMAL);
+
+    // turn on sound, enable notifications
+    amanager.setStreamMute(AudioManager.STREAM_SYSTEM, false);
+    amanager.setStreamVolume(AudioManager.STREAM_SYSTEM, amanager.getStreamMaxVolume(AudioManager.STREAM_SYSTEM), 0);
+    //notifications
+    amanager.setStreamMute(AudioManager.STREAM_NOTIFICATION, false);
+    amanager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, amanager.getStreamMaxVolume(AudioManager.STREAM_NOTIFICATION), 0);
+    //alarm
+    amanager.setStreamMute(AudioManager.STREAM_ALARM, false);
+    amanager.setStreamVolume(AudioManager.STREAM_ALARM, amanager.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0);
+    //ringer
+    amanager.setStreamMute(AudioManager.STREAM_RING, false);
+    amanager.setStreamVolume(AudioManager.STREAM_RING, amanager.getStreamMaxVolume(AudioManager.STREAM_RING), 0);
+    //media
+    amanager.setStreamMute(AudioManager.STREAM_MUSIC, false);
+    amanager.setStreamVolume(AudioManager.STREAM_MUSIC, amanager.getStreamMaxVolume(AudioManager.STREAM_MUSIC), 0);
+	
+}
+
+//Function called in "mute_button" that turns off all sounds
+public void turnOffSounds(){
+    AudioManager amanager; 
+    amanager = (AudioManager)getSystemService(AUDIO_SERVICE);
+	//turn ringer silent
+    amanager.setRingerMode(AudioManager.RINGER_MODE_NORMAL);
+
+    // turn on sound, enable notifications
+    amanager.setStreamMute(AudioManager.STREAM_SYSTEM, true);
+    //notifications
+    amanager.setStreamMute(AudioManager.STREAM_NOTIFICATION, true);
+    //alarm
+    amanager.setStreamMute(AudioManager.STREAM_ALARM, true);
+    //ringer
+    amanager.setStreamMute(AudioManager.STREAM_RING, true);
+    //media
+    amanager.setStreamMute(AudioManager.STREAM_MUSIC, true);
+	
+}
+
+//Display notification when the user is connected to the baby detection device
+protected void displayNotification1() {
+    //Log.i("Start", "notification");
+
+    /* Invoking the default notification service */
+    NotificationCompat.Builder  mBuilder = 
+    new NotificationCompat.Builder(this);	
+
+    mBuilder.setContentTitle("Connected");
+    mBuilder.setContentText("You are now connected to Baby Saver");
+    mBuilder.setTicker("Connected to Baby Saver");
+    mBuilder.setSmallIcon(R.drawable.baby_splashy);
+
+    mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+
+    /* notificationID allows you to update the notification later on. */
+    mNotificationManager.notify(notificationID1, mBuilder.build());
+ }
+
+//Function to display notification when the alarm is activated
+protected void displayNotification2() {
+
+    /* Invoking the default notification service */
+    NotificationCompat.Builder  mBuilder = 
+    new NotificationCompat.Builder(this);
+    
+    Uri soundUri = Uri.parse("android.resource://com.babycartest/raw/cry_sound");
+    
+    mBuilder.setContentTitle("BABY IN THE CAR");
+    mBuilder.setContentText("Reminder: Don't leave your baby in the car!");
+    mBuilder.setTicker("YOU LEFT YOUR BABY");
+    mBuilder.setSound(soundUri);
+    mBuilder.setSmallIcon(R.drawable.alarm);
+
+    mNotificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+
+    /* notificationID allows you to update the notification later on. */
+    mNotificationManager.notify(notificationID2, mBuilder.build());
+ }
+
+//Cancels a particular notification
+protected void cancelNotification(int notificationID){
+	
+	mNotificationManager.cancel(notificationID);
+	
+}
+
+}
+
